@@ -64,9 +64,10 @@ def parse_prezzo(s: str) -> float:
 
 def parse_stagione(s: str) -> str | None:
     t = s.lower()
-    if any(k in t for k in ["inv", "win", "blizzak", "snowprox", "wx"]):  return "invernale"
-    if any(k in t for k in ["est", "sum", "primacy"]):                      return "estivo"
-    if any(k in t for k in ["4s", "all season", "allseason", "4stagioni"]): return "4stagioni"
+    if any(k in t for k in ["inv", "win", "blizzak", "snowprox", "wx"]):            return "invernale"
+    if any(k in t for k in ["est", "sum", "primacy"]):                               return "estivo"
+    if any(k in t for k in ["4s", "all season", "allseason", "4stagioni", "xseason",
+                             "all-season", "4stagion"]):                             return "4stagioni"
     return None
 
 def parse_qty(s: str) -> int:
