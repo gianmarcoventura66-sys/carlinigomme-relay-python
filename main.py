@@ -12,8 +12,9 @@ from curl_cffi import requests as cffi
 app = Flask(__name__)
 
 BASE        = "https://b2b.carlinigomme.com"
-SUPABASE_URL = os.environ["SUPABASE_URL"].strip()
-SUPABASE_KEY = os.environ["SUPABASE_KEY"].strip()
+# re.sub rimuove \n, \r, spazi OVUNQUE nel valore (Render può wrappare JWT con newline interni)
+SUPABASE_URL = re.sub(r'\s+', '', os.environ["SUPABASE_URL"])
+SUPABASE_KEY = re.sub(r'\s+', '', os.environ["SUPABASE_KEY"])
 
 # ── Supabase via urllib standard (NO curl_cffi — non serve TLS fingerprinting) ──
 
