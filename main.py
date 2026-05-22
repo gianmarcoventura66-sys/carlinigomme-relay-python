@@ -12,8 +12,8 @@ from curl_cffi import requests as cffi
 app = Flask(__name__)
 
 BASE        = "https://b2b.carlinigomme.com"
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+SUPABASE_URL = os.environ["SUPABASE_URL"].strip()
+SUPABASE_KEY = os.environ["SUPABASE_KEY"].strip()
 
 # ── Supabase via urllib standard (NO curl_cffi — non serve TLS fingerprinting) ──
 
