@@ -1,10 +1,9 @@
 services:
   - type: web
     name: carlinigomme-relay-py
-    env: python
+    runtime: docker
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn main:app --bind 0.0.0.0:$PORT --workers 1 --timeout 60
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: SUPABASE_URL
         sync: false
