@@ -5,6 +5,7 @@ Legge i cookies da Supabase, fa fetch diretti con TLS Chrome.
 """
 
 import os, re, json, time, threading
+import urllib.request, urllib.error
 from flask import Flask, request, jsonify
 from curl_cffi import requests as cffi
 
@@ -14,6 +15,28 @@ BASE        = "https://b2b.carlinigomme.com"
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 
+# ── Supabase via urllib standard (NO curl_cffi — non serve TLS fingerprinting) ──
+
+def _sb_headers() -> dict:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+def sb_get(path: str) -> list:
+    url = f"{SUPABASE_URL}/rest/v1/{path}"
+    req = urllib.request.Request(url, headers=_sb_headers())
+    with urllib.request.urlopen(req, timeout=12) as resp:
+        return json.loads(resp.read())
+
+def sb_patch(path: str, data: dict):
+    url = f"{SUPABASE_URL}/rest/v1/{path}"
+    body = json.dumps(data).encode()
+    headers = {**_sb_headers(), "Prefer": "return=minimal"}
+    req = urllib.request.Request(url, data=body, headers=headers, method="PATCH")
+    urllib.request.urlopen(req, timeout=12)
+
 # Cache cookies in memoria (ricaricati ogni 30 min)
 _cookie_cache: list = []
 _cookie_ts: float   = 0
@@ -22,13 +45,7 @@ def carica_cookies() -> list:
     global _cookie_cache, _cookie_ts
     if _cookie_cache and (time.time() - _cookie_ts) < 1800:
         return _cookie_cache
-    r = cffi.get(
-        f"{SUPABASE_URL}/rest/v1/impostazioni?chiave=eq.carlin_session&select=valore",
-        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
-        impersonate="chrome124",
-        timeout=10,
-    )
-    rows = r.json()
+    rows = sb_get("impostazioni?chiave=eq.carlin_session&select=valore")
     cookies = rows[0]["valore"]["cookies"] if rows else []
     _cookie_cache = cookies
     _cookie_ts = time.time()
@@ -38,17 +55,9 @@ def salva_cookies(cookies: list):
     global _cookie_cache, _cookie_ts
     _cookie_cache = cookies
     _cookie_ts = time.time()
-    cffi.patch(
-        f"{SUPABASE_URL}/rest/v1/impostazioni?chiave=eq.carlin_session",
-        headers={
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type": "application/json",
-            "Prefer": "return=minimal",
-        },
-        json={"valore": {"cookies": cookies, "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")}},
-        impersonate="chrome124",
-        timeout=10,
+    sb_patch(
+        "impostazioni?chiave=eq.carlin_session",
+        {"valore": {"cookies": cookies, "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")}},
     )
 
 def cookie_dict(cookies: list) -> dict:
@@ -254,9 +263,13 @@ def search():
     if len(q) < 6:
         return jsonify({"errore": "Misura non valida"}), 400
 
-    cookies = carica_cookies()
+    try:
+        cookies = carica_cookies()
+    except Exception as e:
+        return jsonify({"ok": False, "errore": f"Supabase error: {e}", "risultati": []}), 500
+
     if not cookies:
-        return jsonify({"ok": False, "errore": "Nessun cookie in Supabase"}), 503
+        return jsonify({"ok": False, "errore": "Nessun cookie in Supabase — rinnova la sessione", "risultati": []}), 503
 
     misura_fmt = formatta_misura(q)
     url = f"{BASE}/search?q={q}&available=true"
