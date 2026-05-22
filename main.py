@@ -110,6 +110,13 @@ def parse_html(html: str, misura_fmt: str, misura_compact: str) -> list:
 def health():
     return jsonify({"ok": True, "engine": "curl-cffi", "uptime": int(time.monotonic())})
 
+@app.route("/reload-cookies", methods=["POST"])
+def reload_cookies():
+    global _cookie_cache, _cookie_ts
+    _cookie_cache = []
+    _cookie_ts = 0
+    return jsonify({"ok": True})
+
 @app.route("/debug")
 def debug():
     q = re.sub(r"[^\d]", "", request.args.get("q", "2055516"))
