@@ -76,6 +76,8 @@ def formatta_misura(c: str) -> str:
     m = re.match(r"^(\d{3})(\d{2})(\d{2})$", c)
     return f"{m.group(1)}/{m.group(2)}R{m.group(3)}" if m else c
 
+_SEASON_CLASS = {"e": "estivo", "i": "invernale", "4s": "4stagioni", "a": "4stagioni", "as": "4stagioni"}
+
 def parse_html(html: str, misura_fmt: str, misura_compact: str) -> list:
     risultati = []
     for tr in re.findall(r"<tr[^>]*>([\s\S]*?)</tr>", html, re.IGNORECASE):
@@ -90,17 +92,34 @@ def parse_html(html: str, misura_fmt: str, misura_compact: str) -> list:
         prezzo = parse_prezzo(prezzo_str)
         if prezzo <= 0:
             continue
+
+        # Nome completo (senza misura)
         nome = celle[2].replace(misura_fmt, "").replace(misura_compact, "").strip() if len(celle) > 2 else ""
-        disponibilita = sum(parse_qty(celle[i]) for i in [13, 14, 15, 16, 17] if i < len(celle)) or 1
-        stagione_raw = celle[7] if len(celle) > 7 else ""
+
+        # Marca: ultima parola se alfabetica e tutto maiuscolo (es. "XSEASON TRAVERSA" → marca=TRAVERSA)
+        parole = nome.split()
+        if len(parole) >= 2 and parole[-1].isalpha() and parole[-1].isupper():
+            marca   = parole[-1]
+            modello = " ".join(parole[:-1])
+        else:
+            marca   = ""
+            modello = nome
+
+        # Stagione: CSS class product-season-{e|i|4s} è più affidabile del testo
+        sc_m = re.search(r'product-season-(\w+)', tr, re.I)
+        if sc_m:
+            stagione = _SEASON_CLASS.get(sc_m.group(1).lower()) or parse_stagione(nome)
+        else:
+            stagione = parse_stagione(nome)
+
         risultati.append({
-            "marca":         "",
-            "modello":       nome[:120],
+            "marca":         marca,
+            "modello":       modello[:120],
             "misura":        misura_fmt,
             "prezzo":        prezzo,
-            "disponibilita": disponibilita,
+            "disponibilita": 1,          # available=true → tutti disponibili; qty non è nell'HTML
             "fornitore":     "CarlinGomme",
-            "stagione":      parse_stagione(stagione_raw + " " + nome),
+            "stagione":      stagione,
         })
     risultati.sort(key=lambda x: x["prezzo"])
     return risultati
