@@ -96,18 +96,9 @@ def parse_html(html: str, misura_fmt: str, misura_compact: str) -> list:
         # Nome completo (senza misura)
         nome = celle[2].replace(misura_fmt, "").replace(misura_compact, "").strip() if len(celle) > 2 else ""
 
-        # Marca: ultima parola se alfabetica, tutto maiuscolo, e non è una parola generica
-        _NON_BRAND = {"season", "winter", "summer", "spring", "snow", "rain", "ice",
-                      "plus", "sport", "pro", "max", "all", "extra", "size", "dot"}
-        parole = nome.split()
-        ultima = parole[-1] if parole else ""
-        if (len(parole) >= 2 and ultima.isalpha() and ultima.isupper()
-                and ultima.lower() not in _NON_BRAND and len(ultima) >= 3):
-            marca   = ultima
-            modello = " ".join(parole[:-1])
-        else:
-            marca   = ""
-            modello = nome
+        # Marca non è disponibile nell'HTML di CarlinGomme (solo model name)
+        marca   = ""
+        modello = nome
 
         # Stagione: CSS class product-season-{e|i|4s} è più affidabile del testo
         sc_m = re.search(r'product-season-(\w+)', tr, re.I)
@@ -121,7 +112,7 @@ def parse_html(html: str, misura_fmt: str, misura_compact: str) -> list:
             "modello":       modello[:120],
             "misura":        misura_fmt,
             "prezzo":        prezzo,
-            "disponibilita": 1,          # available=true → tutti disponibili; qty non è nell'HTML
+            "disponibilita": "Disponibile",  # available=true → tutti disponibili; qty esatta non è nell'HTML
             "fornitore":     "CarlinGomme",
             "stagione":      stagione,
         })
