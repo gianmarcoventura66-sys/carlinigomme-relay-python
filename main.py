@@ -74,8 +74,11 @@ def parse_qty(s: str) -> int:
     return int(re.sub(r"[^\d]", "", s) or "0")
 
 def formatta_misura(c: str) -> str:
-    m = re.match(r"^(\d{3})(\d{2})(\d{2})$", c)
-    return f"{m.group(1)}/{m.group(2)}R{m.group(3)}" if m else c
+    m = re.match(r"^(\d{3})(\d{2})(\d{2})$", c)          # 2055516 → 205/55R16
+    if m: return f"{m.group(1)}/{m.group(2)}R{m.group(3)}"
+    m = re.match(r"^(\d{3})(\d{2})(\d{2})(\d)$", c)      # 38565225 → 385/65R22.5
+    if m: return f"{m.group(1)}/{m.group(2)}R{m.group(3)}.{m.group(4)}"
+    return c
 
 _SEASON_CLASS = {"e": "estivo", "i": "invernale", "4s": "allseason", "a": "allseason", "as": "allseason"}
 
