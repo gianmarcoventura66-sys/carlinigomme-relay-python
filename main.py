@@ -66,8 +66,8 @@ def parse_stagione(s: str) -> str | None:
     t = s.lower()
     if any(k in t for k in ["inv", "win", "blizzak", "snowprox", "wx"]):            return "invernale"
     if any(k in t for k in ["est", "sum", "primacy"]):                               return "estivo"
-    if any(k in t for k in ["4s", "all season", "allseason", "4stagioni", "xseason",
-                             "all-season", "4stagion"]):                             return "4stagioni"
+    if any(k in t for k in ["4s", "all season", "allseason", "allseason", "xseason",
+                             "all-season", "4stagion"]):                             return "allseason"
     return None
 
 def parse_qty(s: str) -> int:
@@ -77,7 +77,7 @@ def formatta_misura(c: str) -> str:
     m = re.match(r"^(\d{3})(\d{2})(\d{2})$", c)
     return f"{m.group(1)}/{m.group(2)}R{m.group(3)}" if m else c
 
-_SEASON_CLASS = {"e": "estivo", "i": "invernale", "4s": "4stagioni", "a": "4stagioni", "as": "4stagioni"}
+_SEASON_CLASS = {"e": "estivo", "i": "invernale", "4s": "allseason", "a": "allseason", "as": "allseason"}
 
 def parse_html(html: str, misura_fmt: str, misura_compact: str) -> list:
     risultati = []
