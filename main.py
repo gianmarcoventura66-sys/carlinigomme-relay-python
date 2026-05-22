@@ -83,43 +83,101 @@ def formatta_misura(c: str) -> str:
 _SEASON_CLASS = {"e": "estivo", "i": "invernale", "4s": "allseason", "a": "allseason", "as": "allseason"}
 
 def parse_html(html: str, misura_fmt: str, misura_compact: str) -> list:
+    # Struttura reale CarlinGomme B2B (19 colonne per riga prodotto):
+    #   col 0-1: immagine/foto  col 2: nome  col 3: IC/CV
+    #   col 9: listino uff.     col 10: Netto (prezzo d'acquisto)  col 12: PFU
+    #   col 13: CT  col 14: NA 24h  col 15: AP 48h  col 16: AP2 48h  col 17: 3/4gg
+    #
+    # PROBLEMA: il <td> della colonna "Netto" (col 10) ha un attributo title="" con
+    # HTML grezzo non escaped (contiene <tr><td>Prezzo Lordo... </td></tr>).
+    # Questo spezza qualsiasi regex basata su </tr>.
+    # SOLUZIONE: si ancora su data-id per segmentare il blocco per prodotto,
+    # poi si usano <meta itemprop="price"> per i prezzi (immuni al title attr).
+
+    # Trova posizione di ogni riga prodotto tramite data-id
+    tr_positions = [(m.start(), m.group(1)) for m in re.finditer(
+        r'<tr\b[^>]+data-id="(\d+)"', html, re.IGNORECASE
+    )]
+    if not tr_positions:
+        return []
+
+    deposit_labels = ["CT", "NA 24h", "AP 48h", "AP2 48h", "3/4 gg"]
     risultati = []
-    for tr in re.findall(r"<tr[^>]*>([\s\S]*?)</tr>", html, re.IGNORECASE):
-        if "€" not in tr:
+
+    for idx, (start_pos, _) in enumerate(tr_positions):
+        end_pos = tr_positions[idx + 1][0] if idx + 1 < len(tr_positions) else len(html)
+        block = html[start_pos:end_pos]
+
+        # Prezzo: 1° meta = listino uff., 2° meta = Netto (acquisto), 3° = PFU
+        metas = re.findall(r'<meta\s+itemprop="price"\s+content="([\d,\.]+)"', block, re.IGNORECASE)
+        if len(metas) < 2:
             continue
-        celle = [txt(td) for td in re.findall(r"<td[^>]*>([\s\S]*?)</td>", tr, re.IGNORECASE)]
-        if len(celle) < 10:
-            continue
-        prezzo_str = celle[9] if len(celle) > 9 else ""
-        if "€" not in prezzo_str:
-            prezzo_str = next((c for c in celle if "€" in c), "")
-        prezzo = parse_prezzo(prezzo_str)
-        if prezzo <= 0:
+        prezzo_netto = float(metas[1].replace(',', '.'))
+        if prezzo_netto <= 0:
             continue
 
-        # Nome completo (senza misura)
-        nome = celle[2].replace(misura_fmt, "").replace(misura_compact, "").strip() if len(celle) > 2 else ""
+        # Prezzo IVA Inclusa dal tooltip (Netto + PFU + Logistica + IVA 22%)
+        # HTML: <b>Prezzo IVA Incl.</b></td><td...><b>€ 39,32</b>
+        iva_m = re.search(r"Prezzo IVA Incl\.</b></td>\s*<td[^>]*><b>(€\s*[\d,\.]+)", block, re.IGNORECASE)
+        prezzo_ivato = parse_prezzo(iva_m.group(1)) if iva_m else 0.0
 
-        # Marca non è disponibile nell'HTML di CarlinGomme (solo model name)
-        marca   = ""
-        modello = nome
+        # Prezzo Lordo (IVA escl.) dal tooltip — usato come prezzo_listino di riferimento
+        # HTML: <td ...>Prezzo Lordo</td><td ...>€ 30,00</td>
+        lordo_m = re.search(r"Prezzo Lordo</td>\s*<td[^>]*>(€\s*[\d,\.]+)", block, re.IGNORECASE)
+        prezzo_lordo = parse_prezzo(lordo_m.group(1)) if lordo_m else 0.0
 
-        # Stagione: CSS class product-season-{e|i|4s} è più affidabile del testo
-        sc_m = re.search(r'product-season-(\w+)', tr, re.I)
-        if sc_m:
-            stagione = _SEASON_CLASS.get(sc_m.group(1).lower()) or parse_stagione(nome)
-        else:
-            stagione = parse_stagione(nome)
+        # Stagione via CSS class
+        sc_m = re.search(r'class="[^"]*product-season-(\w+)[^"]*"', block, re.IGNORECASE)
 
-        risultati.append({
-            "marca":         marca,
-            "modello":       modello[:120],
+        # Nome: rimuovi title="..." (contengono HTML grezzo) poi prendi 3° TD
+        block_clean = re.sub(r'\s+title="[^"]*"', '', block)
+        tds = re.findall(r"<td[^>]*>([\s\S]*?)</td>", block_clean, re.IGNORECASE)
+        nome = ""
+        if len(tds) > 2:
+            nome = txt(tds[2]).replace(misura_fmt, "").replace(misura_compact, "").strip().lstrip("*").strip()
+
+        stagione = _SEASON_CLASS.get(sc_m.group(1).lower()) if sc_m else parse_stagione(nome)
+
+        # Depositi: celle con class "text-right-inventory availability" → CT, NA, AP, AP2, 3/4gg
+        # NB: quando qty >= 10/20 il sito può inserire un <span> o badge extra —
+        #     catturiamo l'intero contenuto del TD e usiamo parse_qty per estrarre il numero.
+        inv_raw = re.findall(
+            r'<td\b[^>]*\btext-right-inventory\b[^>]*>([\s\S]*?)</td>',
+            block, re.IGNORECASE
+        )
+        inv_vals = [str(parse_qty(v)) for v in inv_raw]
+        depositi: dict = {}
+        for j, lbl in enumerate(deposit_labels):
+            if j < len(inv_vals):
+                v = int(inv_vals[j])
+                if v > 0:
+                    depositi[lbl] = v
+
+        # Disponibilità principale = CT (se > 0), altrimenti totale, altrimenti "Disponibile"
+        ct_qty   = int(inv_vals[0]) if inv_vals else 0
+        tot_inv  = sum(int(v) for v in inv_vals)
+        disp     = ct_qty if ct_qty > 0 else (tot_inv if tot_inv > 0 else "Disponibile")
+
+        # Prezzo esposto: IVA inclusa (il "prezzo finale" che vede l'operatore)
+        # prezzo_listino = Prezzo Lordo IVA escl. (riferimento per confronto sconti)
+        prezzo_esposto = prezzo_ivato if prezzo_ivato > 0 else prezzo_netto
+
+        result: dict = {
+            "marca":         "",
+            "modello":       nome[:120],
             "misura":        misura_fmt,
-            "prezzo":        prezzo,
-            "disponibilita": "Disponibile",  # available=true → tutti disponibili; qty esatta non è nell'HTML
+            "prezzo":        prezzo_esposto,
+            "disponibilita": disp,
             "fornitore":     "CarlinGomme",
             "stagione":      stagione,
-        })
+        }
+        if prezzo_lordo > 0:
+            result["prezzo_listino"] = prezzo_lordo
+        if depositi:
+            result["depositi"] = depositi
+
+        risultati.append(result)
+
     risultati.sort(key=lambda x: x["prezzo"])
     return risultati
 
@@ -150,22 +208,38 @@ def debug():
         tr_with_euro = len([t for t in re.findall(r"<tr[^>]*>[\s\S]*?</tr>", body, re.I) if "€" in t])
         all_trs = re.findall(r"<tr[^>]*>[\s\S]*?</tr>", body, re.I)
         euro_trs = [t for t in all_trs if "€" in t]
-        # Celle di testo delle prime 5 righe
+        prod_trs = [t for t in euro_trs if len(re.findall(r"<td[^>]*>", t, re.I)) >= 10]
+
+        # Brand logo: src o data-src con pattern "marche" o "brand" o nome marcaDa cell[0]
+        brand_imgs = []
+        for tr in prod_trs[:5]:
+            imgs = re.findall(r'(?:data-src|src)="([^"]+)"', tr, re.I)
+            brand_imgs.append(imgs[:8])
+
+        # Celle complete di testo prime 3 righe prodotto
         rows_cells = []
-        for tr in euro_trs[:5]:
+        for tr in prod_trs[:3]:
             tds = re.findall(r"<td[^>]*>([\s\S]*?)</td>", tr, re.I)
             rows_cells.append([txt(td) for td in tds])
-        # HTML raw prima riga (troncato) per vedere tag nascosti
-        raw_first = euro_trs[0][:3000] if euro_trs else ""
+
+        # HTML raw prima riga prodotto completo (senza troncatura)
+        raw_first = prod_trs[0] if prod_trs else ""
+
+        # Cerca pattern depositi in tutte le righe
+        deposito_sample = re.findall(r'class="[^"]*(?:deposit|stock|qty|magaz|ct\b|dispon)[^"]*"[^>]*>([^<]{0,30})', body, re.I)[:10]
+
         return jsonify({
             "status": r.status_code,
             "has_table": has_table,
             "has_euro": has_euro,
             "tr_with_euro": tr_with_euro,
+            "prod_rows": len(prod_trs),
             "body_len": len(body),
             "cookies_loaded": len(cookies),
             "rows_cells": rows_cells,
-            "raw_first_row": raw_first,
+            "brand_imgs_per_row": brand_imgs,
+            "deposito_sample": deposito_sample,
+            "raw_first_row": raw_first[:6000],
         })
     except Exception as e:
         return jsonify({"errore": str(e)}), 500
