@@ -111,6 +111,31 @@ def parse_html(html: str, misura_fmt: str, misura_compact: str) -> list:
 def health():
     return jsonify({"ok": True, "engine": "curl-cffi", "uptime": int(time.monotonic())})
 
+@app.route("/debug")
+def debug():
+    q = re.sub(r"[^\d]", "", request.args.get("q", "2055516"))
+    cookies = carica_cookies()
+    url = f"{BASE}/search?q={q}&available=true"
+    try:
+        r = cffi.get(url, cookies=cookie_dict(cookies),
+            headers={"Referer": f"{BASE}/home", "Accept": "text/html,*/*"},
+            impersonate="chrome124", timeout=30, allow_redirects=False)
+        body = r.text
+        has_euro = "€" in body
+        has_table = "<table" in body.lower()
+        tr_with_euro = len([t for t in re.findall(r"<tr[^>]*>[\s\S]*?</tr>", body, re.I) if "€" in t])
+        return jsonify({
+            "status": r.status_code,
+            "has_table": has_table,
+            "has_euro": has_euro,
+            "tr_with_euro": tr_with_euro,
+            "body_len": len(body),
+            "cookies_loaded": len(cookies),
+            "preview": body[:500]
+        })
+    except Exception as e:
+        return jsonify({"errore": str(e)}), 500
+
 @app.route("/search")
 def search():
     q = re.sub(r"[^\d]", "", request.args.get("q", ""))
