@@ -182,6 +182,10 @@ def parse_html(html: str, misura_fmt: str, misura_compact: str) -> list:
     return risultati
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+@app.route("/")
+def root():
+    return jsonify({"ok": True, "service": "carlinigomme-relay", "engine": "curl-cffi"})
+
 @app.route("/health")
 def health():
     return jsonify({"ok": True, "engine": "curl-cffi", "uptime": int(time.monotonic())})
