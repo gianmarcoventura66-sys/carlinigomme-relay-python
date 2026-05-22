@@ -82,17 +82,16 @@ def parse_html(html: str, misura_fmt: str, misura_compact: str) -> list:
         if "€" not in tr:
             continue
         celle = [txt(td) for td in re.findall(r"<td[^>]*>([\s\S]*?)</td>", tr, re.IGNORECASE)]
-        if len(celle) < 14:
+        if len(celle) < 10:
             continue
         prezzo_str = celle[9] if len(celle) > 9 else ""
         if "€" not in prezzo_str:
-            # Fallback: prima cella con €
             prezzo_str = next((c for c in celle if "€" in c), "")
         prezzo = parse_prezzo(prezzo_str)
         if prezzo <= 0:
             continue
         nome = celle[2].replace(misura_fmt, "").replace(misura_compact, "").strip() if len(celle) > 2 else ""
-        disponibilita = sum(parse_qty(celle[i]) for i in [13, 14, 15, 16, 17] if i < len(celle))
+        disponibilita = sum(parse_qty(celle[i]) for i in [13, 14, 15, 16, 17] if i < len(celle)) or 1
         stagione_raw = celle[7] if len(celle) > 7 else ""
         risultati.append({
             "marca":         "",
