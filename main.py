@@ -124,6 +124,11 @@ def debug():
         has_euro = "€" in body
         has_table = "<table" in body.lower()
         tr_with_euro = len([t for t in re.findall(r"<tr[^>]*>[\s\S]*?</tr>", body, re.I) if "€" in t])
+        # Estrai prima riga con € per debug parser
+        all_trs = re.findall(r"<tr[^>]*>[\s\S]*?</tr>", body, re.I)
+        euro_trs = [t for t in all_trs if "€" in t]
+        sample_row = euro_trs[0] if euro_trs else ""
+        sample_cells = [txt(td) for td in re.findall(r"<td[^>]*>[\s\S]*?</td>", sample_row, re.I)]
         return jsonify({
             "status": r.status_code,
             "has_table": has_table,
@@ -131,7 +136,8 @@ def debug():
             "tr_with_euro": tr_with_euro,
             "body_len": len(body),
             "cookies_loaded": len(cookies),
-            "preview": body[:500]
+            "sample_cells_count": len(sample_cells),
+            "sample_cells": sample_cells[:25],
         })
     except Exception as e:
         return jsonify({"errore": str(e)}), 500
