@@ -130,11 +130,15 @@ def debug():
         has_euro = "€" in body
         has_table = "<table" in body.lower()
         tr_with_euro = len([t for t in re.findall(r"<tr[^>]*>[\s\S]*?</tr>", body, re.I) if "€" in t])
-        # Estrai prima riga con € per debug parser
         all_trs = re.findall(r"<tr[^>]*>[\s\S]*?</tr>", body, re.I)
         euro_trs = [t for t in all_trs if "€" in t]
-        sample_row = euro_trs[0] if euro_trs else ""
-        sample_cells = [txt(td) for td in re.findall(r"<td[^>]*>[\s\S]*?</td>", sample_row, re.I)]
+        # Celle di testo delle prime 5 righe
+        rows_cells = []
+        for tr in euro_trs[:5]:
+            tds = re.findall(r"<td[^>]*>([\s\S]*?)</td>", tr, re.I)
+            rows_cells.append([txt(td) for td in tds])
+        # HTML raw prima riga (troncato) per vedere tag nascosti
+        raw_first = euro_trs[0][:3000] if euro_trs else ""
         return jsonify({
             "status": r.status_code,
             "has_table": has_table,
@@ -142,8 +146,8 @@ def debug():
             "tr_with_euro": tr_with_euro,
             "body_len": len(body),
             "cookies_loaded": len(cookies),
-            "sample_cells_count": len(sample_cells),
-            "sample_cells": sample_cells[:25],
+            "rows_cells": rows_cells,
+            "raw_first_row": raw_first,
         })
     except Exception as e:
         return jsonify({"errore": str(e)}), 500
