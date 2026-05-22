@@ -96,10 +96,14 @@ def parse_html(html: str, misura_fmt: str, misura_compact: str) -> list:
         # Nome completo (senza misura)
         nome = celle[2].replace(misura_fmt, "").replace(misura_compact, "").strip() if len(celle) > 2 else ""
 
-        # Marca: ultima parola se alfabetica e tutto maiuscolo (es. "XSEASON TRAVERSA" → marca=TRAVERSA)
+        # Marca: ultima parola se alfabetica, tutto maiuscolo, e non è una parola generica
+        _NON_BRAND = {"season", "winter", "summer", "spring", "snow", "rain", "ice",
+                      "plus", "sport", "pro", "max", "all", "extra", "size", "dot"}
         parole = nome.split()
-        if len(parole) >= 2 and parole[-1].isalpha() and parole[-1].isupper():
-            marca   = parole[-1]
+        ultima = parole[-1] if parole else ""
+        if (len(parole) >= 2 and ultima.isalpha() and ultima.isupper()
+                and ultima.lower() not in _NON_BRAND and len(ultima) >= 3):
+            marca   = ultima
             modello = " ".join(parole[:-1])
         else:
             marca   = ""
